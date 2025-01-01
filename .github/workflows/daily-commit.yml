@@ -1,0 +1,50 @@
+name: Automated Streak Keeper
+
+on:
+  schedule:
+    # 5 natural daytime/evening windows (09:15 AM to 11:15 PM IST)
+    # 03:45 UTC (09:15 AM IST), 07:45 UTC (01:15 PM IST), 11:45 UTC (05:15 PM IST), 14:45 UTC (08:15 PM IST), 17:45 UTC (11:15 PM IST)
+    - cron: '45 3,7,11,14,17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  streak-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply Random Timing Jitter
+        if: github.event_name == 'schedule'
+        run: |
+          # Sleep a random duration (between 30s and 900s / 15 minutes) to ensure natural, unpredictable timestamps
+          JITTER=$((RANDOM % 870 + 30))
+          echo "Applying random timing jitter of ${JITTER} seconds..."
+          sleep $JITTER
+
+      - name: Evaluate Streak Decision
+        id: manager
+        run: |
+          python streak_manager.py --event "${{ github.event_name }}"
+
+      - name: Commit and Push Changes
+        if: steps.manager.outputs.should_commit == 'true'
+        run: |
+          git config --global user.name "yashkushwahdev"
+          git config --global user.email "yashkushwahdev@gmail.com"
+          
+          git add last_run.txt activity_state.json
+          git commit -m "${{ steps.manager.outputs.commit_message }}"
+          git pull --rebase origin main
+          git push origin main
